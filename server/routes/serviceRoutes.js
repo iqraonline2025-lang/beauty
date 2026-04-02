@@ -1,76 +1,55 @@
-import Service from '../models/Service.js';
+import express from 'express';
+import Service from '../models/Service.js'; 
+import upload from '../middleware/UploadMiddleware.js';
+import { 
+  getServices, 
+  getAllServices, 
+  createService, 
+  deleteService 
+} from '../controllers/serviceController.js';
 
-// 1. GET Featured Services (Limit for Home Page)
-export const getServices = async (req, res) => {
+const router = express.Router();
+
+// 1. GET Featured Services (For Home Page)
+router.get('/', getServices);
+
+// 2. GET All Services (For Main Menu)
+router.get('/all', getAllServices);
+
+// 3. GET Specific Service by ID (The "Missing Link")
+// This is critical for the booking page to know what service is being selected
+router.get('/:id', async (req, res) => {
     try {
-        const services = await Service.find().limit(6);
-        res.status(200).json(services);
-    } catch (error) {
-        res.status(500).json({ message: "Error fetching featured services" });
-    }
-};
-
-// 2. GET All Services
-export const getAllServices = async (req, res) => {
-    try {
-        const services = await Service.find().sort({ createdAt: -1 });
-        res.status(200).json(services);
-    } catch (error) {
-        res.status(500).json({ message: "Error fetching all services" });
-    }
-};
-
-// 3. CREATE Service (Fixed for Image Upload & 400 Errors)
-export const createService = async (req, res) => {
-    try {
-        const { title, description, price, duration } = req.body;
-
-        // --- VALIDATION LOGIC ---
-        // If these are missing, we send a 400 before the DB even tries to save.
-        if (!title || !price) {
-            return res.status(400).json({ 
-                message: "Validation Error: Title and Price are required." 
-            });
-        }
-
-        // --- IMAGE HANDLING ---
-        // 'req.file' comes from the 'upload.single("image")' middleware in the route
-        let imagePath = null;
-        if (req.file) {
-            // We store the path so the frontend can display it
-            imagePath = `/uploads/${req.file.filename}`;
-        }
-
-        const newService = new Service({
-            title,
-            description,
-            price: Number(price), // Ensure price is a number
-            duration,
-            image: imagePath
-        });
-
-        const savedService = await newService.save();
-        res.status(201).json(savedService);
-
-    } catch (error) {
-        console.error("Create Service Error:", error);
-        // This catches MongoDB validation errors or schema mismatches
-        res.status(400).json({ message: error.message });
-    }
-};
-
-// 4. DELETE Service
-export const deleteService = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const deletedService = await Service.findByIdAndDelete(id);
-
-        if (!deletedService) {
+        const service = await Service.findById(req.params.id);
+        if (!service) {
             return res.status(404).json({ message: "Service not found" });
         }
-
-        res.status(200).json({ message: "Service deleted successfully" });
+        res.status(200).json(service);
     } catch (error) {
-        res.status(500).json({ message: "Error deleting service", error: error.message });
+        res.status(500).json({ message: "Invalid ID format or server error" });
     }
-};
+});
+
+// 4. POST New Service (Includes File Upload)
+router.post('/', upload.single('image'), createService);
+
+// 5. DELETE Specific Service
+router.delete('/:id', deleteService);
+
+// 6. THE DATABASE CLEANER (Dev use only)
+router.get('/nuke/everything', async (req, res) => {
+  try {
+    const result = await Service.deleteMany({});
+    res.status(200).send(`
+      <div style="font-family: sans-serif; text-align: center; padding: 50px; background-color: #fff5f7; min-height: 100vh;">
+        <h1 style="color: #db2777; font-size: 3rem;">Database wiped clean! 🧼</h1>
+        <p style="color: #4b5563; font-size: 1.2rem;">Removed <strong>${result.deletedCount}</strong> items.</p>
+        <p style="color: #9ca3af;">Go to the <a href="http://localhost:3000/admin" style="color: #db2777; font-weight: bold;">Admin Page</a> to add new ones.</p>
+      </div>
+    `);
+  } catch (error) {
+    res.status(500).json({ message: "Error clearing database", error: error.message });
+  }
+});
+
+export default router;
