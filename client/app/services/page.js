@@ -4,16 +4,13 @@ import Navbar from "../components/Navbar";
 import ServicesHero from "../components/ServicesHero";
 import ServiceMenu from "../components/ServiceMenu";
 import Footer from "../components/Footer";
-// 1. Import the useAuth hook
 import { useAuth } from "../context/AuthContext"; 
 import { useRouter } from 'next/navigation';
 
 export default function Services() {
     const [services, setServices] = useState([]);
     const [loading, setLoading] = useState(true);
-    
-    // 2. Grab the user and loading state from our Global Brain
-    const { user, loading: authLoading } = useAuth();
+    const { user } = useAuth();
     const router = useRouter();
 
     useEffect(() => {
@@ -33,14 +30,14 @@ export default function Services() {
         fetchServices();
     }, []);
 
-    // 3. Create the "Gatekeeper" function
+    // --- FIXED GATEKEEPER FUNCTION ---
     const handleBookNow = (serviceId) => {
         if (!user) {
-            // If NO user, send them to login
             router.push('/login');
         } else {
-            // If user EXISTS, go to booking page
-            router.push(`/book/${serviceId}`);
+            // Changed from /book/${id} to /book?service=${id}
+            // This matches the searchParams.get('service') in your booking page
+            router.push(`/book?service=${serviceId}`);
         }
     };
 
@@ -54,13 +51,10 @@ export default function Services() {
                     <div className="w-8 h-8 border-4 border-pink-100 border-t-pink-500 rounded-full animate-spin"></div>
                 </div>
             ) : services.length > 0 ? (
-                // 4. Pass the handleBookNow function into the ServiceMenu
                 <ServiceMenu services={services} onBookClick={handleBookNow} />
             ) : (
                 <div className="text-center py-40 bg-gray-50/50 mx-10 rounded-[3rem] border border-dashed border-gray-200">
-                    <p className="text-gray-400 font-serif italic text-xl">
-                        No services found.
-                    </p>
+                    <p className="text-gray-400 font-serif italic text-xl">No services found.</p>
                     <p className="text-pink-400 text-[10px] uppercase tracking-[0.2em] mt-2 font-black">
                         Please add services via the Admin Dashboard.
                     </p>
