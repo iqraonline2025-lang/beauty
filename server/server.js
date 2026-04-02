@@ -1,5 +1,9 @@
-import dotenv from "dotenv";
-dotenv.config(); // MUST be the first thing that runs
+// server/server.js
+
+// 1. ENVIRONMENT CONFIG (Beat ESM hoisting using createRequire)
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+require('dotenv').config(); 
 
 import express from "express";
 import mongoose from "mongoose";
@@ -19,32 +23,44 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-// 1. SESSION CONFIG
+// 2. RENDER/PROXY SETTINGS
+// This is critical for Google OAuth. It tells Express to trust Render's 
+// headers so the redirect happens over HTTPS instead of HTTP.
+app.set("trust proxy", 1); 
+
+// 3. SESSION CONFIG
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "zainab_studio_secret",
     resave: false,
     saveUninitialized: false,
+    proxy: true, // Required for secure cookies on proxy hosts like Render
     cookie: {
-      secure: process.env.NODE_ENV === "production",
+      secure: process.env.NODE_ENV === "production", 
       maxAge: 24 * 60 * 60 * 1000,
+      // 'none' is required for cross-site cookies during OAuth redirects
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     },
   })
 );
 
-// 2. PASSPORT INIT
+// 4. PASSPORT INIT
 app.use(passport.initialize());
 app.use(passport.session());
 
+// 5. CORS CONFIG
 app.use(cors({
-  origin: "https://beauty-1-ab1g.onrender.com",
+  origin: [
+    "https://beauty-1-ab1g.onrender.com", 
+    "http://localhost:3000"
+  ],
   credentials: true
 }));
-app.use(express.json());
 
+app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "/uploads")));
 
-// REGISTER ROUTES
+// 6. REGISTER ROUTES
 app.use("/api/services", serviceRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/auth", authRoutes);
@@ -53,7 +69,7 @@ app.get("/", (req, res) => {
   res.status(200).json({ message: "API is running smoothly... 🚀" });
 });
 
-// Error Handling
+// 7. ERROR HANDLING
 app.use((err, req, res, next) => {
   const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
   res.status(statusCode).json({
@@ -62,7 +78,13 @@ app.use((err, req, res, next) => {
   });
 });
 
+// 8. DATABASE & SERVER START
 const PORT = process.env.PORT || 5000;
+
+if (!process.env.MONGO_URI) {
+  console.error("❌ ERROR: MONGO_URI is not defined in .env");
+  process.exit(1);
+}
 
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
