@@ -8,11 +8,14 @@ const router = express.Router();
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: "/auth/google/callback"
+    // FIX 1: Provide the full absolute URL or ensure proxy is true
+    callbackURL: process.env.NODE_ENV === "production" 
+        ? "https://beauty-qyr9.onrender.com/api/auth/google/callback" 
+        : "http://localhost:5000/api/auth/google/callback",
+    proxy: true // FIX 2: THIS IS REQUIRED FOR RENDER (HOURS OF HEADACHES SAVED)
   },
   (accessToken, refreshToken, profile, done) => {
-    // This is where you'd check your DB (MongoDB/Postgres)
-    // For now, we pass the profile forward
+    // Note: Usually you save profile.id and profile.emails[0].value to MongoDB here
     return done(null, profile);
   }
 ));
@@ -25,28 +28,34 @@ router.get("/google", passport.authenticate("google", {
 // 2. Callback from Google
 router.get("/google/callback", 
   passport.authenticate("google", {
-    successRedirect: "http://localhost:3000/dashboard", // Your Frontend URL
-    failureRedirect: "/login/failed",
+    // FIX 3: Dynamic Redirects
+    successRedirect: process.env.NODE_ENV === "production" 
+        ? "https://beauty-1-ab1g.onrender.com/dashboard" 
+        : "http://localhost:3000/dashboard",
+    failureRedirect: "/api/auth/login/failed",
   })
 );
 
-// 3. Check Auth Status
-router.get("/login/success", (core, res) => {
-  if (core.user) {
+// 3. Check Auth Status (Changed 'core' to 'req' for standard practice)
+router.get("/login/success", (req, res) => {
+  if (req.user) {
     res.status(200).json({
       success: true,
-      user: core.user,
+      user: req.user,
     });
   } else {
-    res.status(401).json({ success: false });
+    res.status(401).json({ success: false, message: "Not Authenticated" });
   }
 });
 
 // 4. Logout
-router.get("/logout", (core, res) => {
-  core.logout((err) => {
+router.get("/logout", (req, res) => {
+  req.logout((err) => {
     if (err) return res.status(500).json({ message: "Logout failed" });
-    res.redirect("http://localhost:3000/");
+    const clientUrl = process.env.NODE_ENV === "production" 
+        ? "https://beauty-1-ab1g.onrender.com/" 
+        : "http://localhost:3000/";
+    res.redirect(clientUrl);
   });
 });
 
