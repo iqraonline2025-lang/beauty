@@ -37,7 +37,7 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 app.use(cors({
-  origin: "http://localhost:3000",
+  origin: "https://beauty-1-ab1g.onrender.com",
   credentials: true
 }));
 app.use(express.json());
