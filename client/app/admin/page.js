@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, PlusCircle, List, Settings, LogOut, Trash2,
   ChevronDown, CalendarCheck, XCircle, CheckCircle, User,
-  Clock, Phone, Loader2, Ban
+  Clock, Phone, Loader2, Ban, Image as ImageIcon
 } from 'lucide-react';
 
 export default function AdminPage() {
@@ -12,34 +12,25 @@ export default function AdminPage() {
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(true);
     
-    const [showBlockForm, setShowBlockForm] = useState(false);
-    const [blockData, setBlockData] = useState({ date: '', time: '' });
-
     const [formData, setFormData] = useState({
         title: '', category: 'Hair', description: '', price: '', duration: '',
     });
     const [imageFile, setImageFile] = useState(null);
 
-    // FIX 1: Enhanced Fetching with Error Handling
     const fetchData = async () => {
         try {
-            console.log("Attempting to fetch data from API...");
             const [servRes, bookRes] = await Promise.all([
-                fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/services/all`).catch(e => ({ json: () => [] })),
-                fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/bookings/all`).catch(e => ({ json: () => [] }))
+                fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/services/all`),
+                fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/bookings/all`)
             ]);
             
             const sData = await servRes.json();
             const bData = await bookRes.json();
             
-            console.log("Services received:", sData);
-            console.log("Bookings received:", bData);
-
-            // Ensure we are setting arrays even if the API sends an object/error
             setServices(Array.isArray(sData) ? sData : (sData.services || []));
             setBookings(Array.isArray(bData) ? bData : (bData.bookings || []));
         } catch (err) { 
-            console.error("Critical Fetch Error:", err); 
+            console.error("Fetch Error:", err); 
         } finally {
             setLoading(false);
         }
@@ -47,44 +38,45 @@ export default function AdminPage() {
 
     useEffect(() => { fetchData(); }, []);
 
-    // FIX 2: Fixed handleDelete to refresh the list immediately
     const handleDelete = async (id) => {
         if (!window.confirm("Delete this service?")) return;
         try {
             const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/services/${id}`, { method: 'DELETE' });
-            if (res.ok) {
-                // Manually filter local state for instant UI update
-                setServices(prev => prev.filter(s => s._id !== id));
-            }
+            if (res.ok) setServices(prev => prev.filter(s => s._id !== id));
         } catch (err) { alert("Delete failed"); }
-    };
-
-    const handleToggleStatus = async (id, currentStatus) => {
-        const newStatus = currentStatus === 'confirmed' ? 'cancelled' : 'confirmed';
-        try {
-            await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/bookings/${id}/cancel`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: newStatus })
-            });
-            fetchData();
-        } catch (err) { alert("Update failed"); }
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        
+        // --- FIX: Use FormData for Image Uploads ---
         const data = new FormData();
-        Object.keys(formData).forEach(key => data.append(key, formData[key]));
-        data.append('slug', formData.title.toLowerCase().replace(/\s+/g, '-'));
-        if (imageFile) data.append('image', imageFile);
+        data.append('title', formData.title);
+        data.append('category', formData.category);
+        data.append('description', formData.description);
+        data.append('price', formData.price);
+        data.append('duration', formData.duration);
+        
+        // This key MUST match upload.single('image') in your backend
+        if (imageFile) {
+            data.append('image', imageFile);
+        }
 
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/services`, { method: 'POST', body: data });
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/services`, { 
+                method: 'POST', 
+                // Note: Do NOT set Content-Type header when sending FormData
+                body: data 
+            });
+            
             if (res.ok) {
                 setFormData({ title: '', category: 'Hair', description: '', price: '', duration: '' });
                 setImageFile(null);
-                await fetchData(); // Force a fresh list download
+                await fetchData();
                 setActiveTab('manage');
+            } else {
+                const errorResult = await res.json();
+                alert(`Error: ${errorResult.message}`);
             }
         } catch (err) { alert("Error saving service"); }
     };
@@ -93,6 +85,7 @@ export default function AdminPage() {
 
     return (
         <div className="flex min-h-screen bg-[#FDFCFD]">
+            {/* Sidebar */}
             <aside className="w-72 bg-white border-r border-pink-100 flex flex-col fixed h-full z-10 shadow-sm">
                 <div className="p-8 mb-4">
                     <h1 className="text-2xl font-serif italic font-bold text-gray-900">Glow<span className="text-pink-500">Admin</span></h1>
@@ -105,8 +98,10 @@ export default function AdminPage() {
                 </nav>
             </aside>
 
+            {/* Main Content */}
             <main className="flex-1 ml-72 p-12">
                 
+                {/* Dashboard Tab */}
                 {activeTab === 'dashboard' && (
                     <div className="animate-in fade-in">
                         <h2 className="text-4xl font-serif italic mb-10 text-gray-900">Hello, Beautiful</h2>
@@ -118,37 +113,7 @@ export default function AdminPage() {
                     </div>
                 )}
 
-                {activeTab === 'appointments' && (
-                    <div className="animate-in fade-in">
-                        <h2 className="text-3xl font-serif italic mb-8 text-gray-900">Appointment Book</h2>
-                        <div className="grid gap-4">
-                            {bookings && bookings.length > 0 ? (
-                                bookings.slice().reverse().map((booking) => (
-                                    <div key={booking._id} className="bg-white p-6 rounded-[2rem] border border-gray-100 flex items-center justify-between shadow-sm">
-                                        <div className="flex-1 grid grid-cols-4 gap-4 items-center">
-                                            <div className="flex items-center gap-3">
-                                                <div className="p-2 bg-pink-50 rounded-full text-pink-500"><User size={16}/></div>
-                                                <div>
-                                                    <p className="font-bold text-gray-800">{booking.customerName || 'Guest'}</p>
-                                                    <p className="text-[10px] text-pink-500 font-black uppercase">{booking.service?.title || 'Service'}</p>
-                                                </div>
-                                            </div>
-                                            <div className="text-gray-500 text-sm"><Clock size={16} className="inline mr-2"/>{booking.date} @ {booking.time}</div>
-                                            <div className="text-gray-400 text-xs truncate">{booking.phone || 'No Phone'}</div>
-                                            <div className={`text-[10px] font-black uppercase ${booking.status === 'confirmed' ? 'text-green-500' : 'text-red-500'}`}>{booking.status}</div>
-                                        </div>
-                                        <button onClick={() => handleToggleStatus(booking._id, booking.status)} className="p-2 text-gray-300 hover:text-pink-500">
-                                            {booking.status === 'confirmed' ? <XCircle size={24}/> : <CheckCircle size={24}/>}
-                                        </button>
-                                    </div>
-                                ))
-                            ) : (
-                                <div className="text-center py-20 bg-white rounded-[2.5rem] border-2 border-dashed border-gray-100 text-gray-400">No bookings currently showing.</div>
-                            )}
-                        </div>
-                    </div>
-                )}
-
+                {/* Add Service Tab */}
                 {activeTab === 'add' && (
                     <div className="max-w-3xl animate-in slide-in-from-bottom-4">
                         <h2 className="text-3xl font-serif italic mb-8 text-gray-900">Create Treatment</h2>
@@ -164,19 +129,42 @@ export default function AdminPage() {
                                     </select>
                                 </div>
                             </div>
+
                             <div className="grid grid-cols-2 gap-8">
                                 <FormInput label="Price (£)" type="number" value={formData.price} onChange={(e) => setFormData({...formData, price: e.target.value})} required />
-                                <FormInput label="Duration" value={formData.duration} onChange={(e) => setFormData({...formData, duration: e.target.value})} required />
+                                <FormInput label="Duration (min)" value={formData.duration} onChange={(e) => setFormData({...formData, duration: e.target.value})} required />
                             </div>
+
+                            {/* --- ADDED: Image Upload Field --- */}
+                            <div className="space-y-2">
+                                <label className="text-[11px] font-black uppercase text-gray-500 ml-1">Service Image</label>
+                                <div className="relative border-2 border-dashed border-gray-100 rounded-2xl p-8 text-center hover:bg-gray-50 transition-all cursor-pointer">
+                                    <input 
+                                        type="file" 
+                                        accept="image/*"
+                                        onChange={(e) => setImageFile(e.target.files[0])}
+                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                    />
+                                    <div className="flex flex-col items-center gap-2">
+                                        <ImageIcon className="text-pink-400" size={32} />
+                                        <p className="text-sm text-gray-500">
+                                            {imageFile ? <span className="text-pink-600 font-bold">{imageFile.name}</span> : "Click to upload image"}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="space-y-2">
                                 <label className="text-[11px] font-black uppercase text-gray-500 ml-1">Description</label>
                                 <textarea value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full p-5 rounded-2xl border border-gray-200 h-32 text-sm" required />
                             </div>
+                            
                             <button type="submit" className="w-full bg-black text-white py-5 rounded-2xl font-black uppercase text-xs hover:bg-pink-500 transition-all">Save & Publish</button>
                         </form>
                     </div>
                 )}
 
+                {/* Manage Tab */}
                 {activeTab === 'manage' && (
                     <div className="animate-in fade-in">
                         <h2 className="text-3xl font-serif italic mb-8 text-gray-900">Live Menu Management</h2>
@@ -190,11 +178,16 @@ export default function AdminPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
-                                    {services && services.length > 0 ? services.map((s) => (
+                                    {services.length > 0 ? services.map((s) => (
                                         <tr key={s._id} className="hover:bg-pink-50/20 transition-colors">
                                             <td className="p-6">
-                                                <p className="font-bold text-gray-900">{s.title}</p>
-                                                <p className="text-[10px] uppercase text-gray-400 font-black">{s.category}</p>
+                                                <div className="flex items-center gap-4">
+                                                    {s.image && <img src={`${process.env.NEXT_PUBLIC_API_URL}${s.image}`} className="w-12 h-12 rounded-xl object-cover" />}
+                                                    <div>
+                                                        <p className="font-bold text-gray-900">{s.title}</p>
+                                                        <p className="text-[10px] uppercase text-gray-400 font-black">{s.category}</p>
+                                                    </div>
+                                                </div>
                                             </td>
                                             <td className="p-6 font-black text-pink-600">£{s.price}</td>
                                             <td className="p-6 text-right pr-10">
