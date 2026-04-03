@@ -9,8 +9,6 @@ dotenv.config();
 
 const router = express.Router();
 
-// --- DYNAMIC URLS FOR PRODUCTION ---
-// This automatically detects if you are on Render or Localhost
 const BACKEND_URL = process.env.NODE_ENV === "production" 
     ? "https://beauty-qyr9.onrender.com" 
     : "http://localhost:5000";
@@ -19,27 +17,42 @@ const FRONTEND_URL = process.env.NODE_ENV === "production"
     ? "https://beauty-1-ab1g.onrender.com" 
     : "http://localhost:3000";
 
-// --- PASSPORT CONFIGURATION ---
+// --- FIXED PASSPORT CONFIGURATION ---
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    // FIX 1: Use the dynamic Backend URL
     callbackURL: `${BACKEND_URL}/api/auth/google/callback`,
-    proxy: true // FIX 2: Essential for Render's HTTPS to work
+    proxy: true 
   },
   async (accessToken, refreshToken, profile, done) => {
     try {
+      const emailFromGoogle = profile.emails[0].value;
+
+      // 1. Check if user already has this Google ID linked
       let user = await User.findOne({ googleId: profile.id });
+
       if (!user) {
-        user = await User.create({
-          googleId: profile.id,
-          name: profile.displayName,
-          email: profile.emails[0].value,
-          avatar: profile.photos[0].value
-        });
+        // 2. Check if a user exists with this email but no Google ID linked yet
+        user = await User.findOne({ email: emailFromGoogle });
+
+        if (user) {
+          // 3. Link the Google ID to the existing email account
+          user.googleId = profile.id;
+          if (!user.avatar) user.avatar = profile.photos[0].value;
+          await user.save();
+        } else {
+          // 4. If no account exists at all, create a new one
+          user = await User.create({
+            googleId: profile.id,
+            name: profile.displayName,
+            email: emailFromGoogle,
+            avatar: profile.photos[0].value
+          });
+        }
       }
       return done(null, user);
     } catch (error) {
+      // This catches the E11000 error or any other DB issues
       return done(error, null);
     }
   }
@@ -57,14 +70,12 @@ passport.deserializeUser(async (id, done) => {
 });
 
 // --- AUTH ROUTES ---
-
 router.post("/register", registerUser);
 router.post("/login", loginUser);
 
 router.get("/google", passport.authenticate("google", { scope: ["profile", "email"] }));
 
 router.get("/google/callback", 
-  // FIX 3: Dynamic Redirects
   passport.authenticate("google", { failureRedirect: `${FRONTEND_URL}/login` }),
   (req, res) => {
     res.redirect(`${FRONTEND_URL}/services`);
