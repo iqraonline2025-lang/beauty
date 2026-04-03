@@ -8,6 +8,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import session from "express-session";
 import passport from "passport";
+import MongoStore from "connect-mongo"; // Recommended for production
 
 // Route Imports
 import serviceRoutes from "./routes/serviceRoutes.js"; 
@@ -20,20 +21,30 @@ const __dirname = path.dirname(__filename);
 const app = express();
 
 // --- FIX 1: TRUST PROXY ---
-// Render uses a proxy. Without this, 'secure: true' cookies won't be sent.
 app.set("trust proxy", 1); 
 
-// --- FIX 2: SESSION CONFIG ---
+// --- FIX 2: DYNAMIC CORS ---
+const FRONTEND_URL = process.env.NODE_ENV === "production" 
+    ? "https://beauty-1-ab1g.onrender.com" 
+    : "http://localhost:3000";
+
+app.use(cors({
+  origin: FRONTEND_URL,
+  credentials: true 
+}));
+
+// --- FIX 3: SESSION CONFIG ---
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "zainab_studio_secret",
     resave: false,
     saveUninitialized: false,
-    proxy: true, // Required for Render
+    // Optional but highly recommended: Store sessions in MongoDB so 
+    // users don't get logged out every time the server restarts on Render.
+    store: MongoStore.create({ mongoUrl: process.env.MONGO_URI }),
     cookie: {
-      // Must be true for HTTPS on Render
       secure: process.env.NODE_ENV === "production", 
-      // CRITICAL: Required for cross-site cookies between frontend and backend URLs
+      // "none" for production HTTPS, "lax" for local HTTP
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", 
       maxAge: 24 * 60 * 60 * 1000,
     },
@@ -43,11 +54,6 @@ app.use(
 // 2. PASSPORT INIT
 app.use(passport.initialize());
 app.use(passport.session());
-
-app.use(cors({
-  origin: "https://beauty-1-ab1g.onrender.com",
-  credentials: true // Required to allow cookies to be sent back and forth
-}));
 
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "/uploads")));
