@@ -17,7 +17,7 @@ const FRONTEND_URL = process.env.NODE_ENV === "production"
     ? "https://beauty-1-ab1g.onrender.com" 
     : "http://localhost:3000";
 
-// --- FIXED PASSPORT CONFIGURATION ---
+// --- PASSPORT CONFIGURATION ---
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
@@ -28,20 +28,20 @@ passport.use(new GoogleStrategy({
     try {
       const emailFromGoogle = profile.emails[0].value;
 
-      // 1. Check if user already has this Google ID linked
+      // 1. Try to find user by googleId
       let user = await User.findOne({ googleId: profile.id });
 
       if (!user) {
-        // 2. Check if a user exists with this email but no Google ID linked yet
+        // 2. Fallback: Check if email exists (from a standard registration)
         user = await User.findOne({ email: emailFromGoogle });
 
         if (user) {
-          // 3. Link the Google ID to the existing email account
+          // 3. Link Google account to existing email user
           user.googleId = profile.id;
           if (!user.avatar) user.avatar = profile.photos[0].value;
           await user.save();
         } else {
-          // 4. If no account exists at all, create a new one
+          // 4. No account at all, create new
           user = await User.create({
             googleId: profile.id,
             name: profile.displayName,
@@ -52,13 +52,15 @@ passport.use(new GoogleStrategy({
       }
       return done(null, user);
     } catch (error) {
-      // This catches the E11000 error or any other DB issues
       return done(error, null);
     }
   }
 ));
 
-passport.serializeUser((user, done) => done(null, user.id));
+// Use user._id for consistency with MongoDB
+passport.serializeUser((user, done) => {
+  done(null, user._id);
+});
 
 passport.deserializeUser(async (id, done) => {
   try {
@@ -70,15 +72,26 @@ passport.deserializeUser(async (id, done) => {
 });
 
 // --- AUTH ROUTES ---
+
 router.post("/register", registerUser);
 router.post("/login", loginUser);
 
-router.get("/google", passport.authenticate("google", { scope: ["profile", "email"] }));
+// FIX: Added 'prompt' to ensure Google always asks which account to use
+router.get("/google", passport.authenticate("google", { 
+  scope: ["profile", "email"],
+  prompt: "select_account" 
+}));
 
 router.get("/google/callback", 
-  passport.authenticate("google", { failureRedirect: `${FRONTEND_URL}/login` }),
+  passport.authenticate("google", { 
+    failureRedirect: `${FRONTEND_URL}/login`,
+    session: true 
+  }),
   (req, res) => {
-    res.redirect(`${FRONTEND_URL}/services`);
+    // Force session to save before redirecting (avoids race conditions on Render)
+    req.session.save(() => {
+      res.redirect(`${FRONTEND_URL}/services`);
+    });
   }
 );
 
@@ -95,7 +108,7 @@ router.get("/login/success", (req, res) => {
       },
     });
   } else {
-    res.status(200).json({ success: false, message: "No active session" });
+    res.status(401).json({ success: false, message: "No active session" });
   }
 });
 
@@ -104,9 +117,10 @@ router.post("/logout", (req, res) => {
     if (err) return res.status(500).json({ message: "Logout failed" });
     
     if (req.session) {
-      req.session.destroy(() => {
-        res.clearCookie('connect.sid'); 
-        res.status(200).json({ success: true });
+      req.session.destroy((err) => {
+        if (err) return res.status(500).json({ message: "Could not destroy session" });
+        res.clearCookie('connect.sid', { path: '/' }); 
+        return res.status(200).json({ success: true });
       });
     } else {
       res.status(200).json({ success: true });
