@@ -9,7 +9,6 @@ import { fileURLToPath } from "url";
 import session from "express-session";
 import passport from "passport";
 
-
 // Route Imports
 import serviceRoutes from "./routes/serviceRoutes.js"; 
 import bookingRoutes from "./routes/bookingRoutes.js";
@@ -20,10 +19,10 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-// --- FIX 1: TRUST PROXY ---
+// --- TRUST PROXY (For Render) ---
 app.set("trust proxy", 1); 
 
-// --- FIX 2: DYNAMIC CORS ---
+// --- DYNAMIC CORS ---
 const FRONTEND_URL = process.env.NODE_ENV === "production" 
     ? "https://beauty-1-ab1g.onrender.com" 
     : "http://localhost:3000";
@@ -33,25 +32,20 @@ app.use(cors({
   credentials: true 
 }));
 
-// --- FIX 3: SESSION CONFIG ---
+// --- SESSION CONFIG (Memory Store) ---
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "zainab_studio_secret",
     resave: false,
     saveUninitialized: false,
-    // Optional but highly recommended: Store sessions in MongoDB so 
-    // users don't get logged out every time the server restarts on Render.
-    store: MongoStore.create({ mongoUrl: process.env.MONGO_URI }),
     cookie: {
       secure: process.env.NODE_ENV === "production", 
-      // "none" for production HTTPS, "lax" for local HTTP
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", 
       maxAge: 24 * 60 * 60 * 1000,
     },
   })
 );
 
-// 2. PASSPORT INIT
 app.use(passport.initialize());
 app.use(passport.session());
 
@@ -64,16 +58,7 @@ app.use("/api/bookings", bookingRoutes);
 app.use("/api/auth", authRoutes);
 
 app.get("/", (req, res) => {
-  res.status(200).json({ message: "API is running smoothly... 🚀" });
-});
-
-// Error Handling
-app.use((err, req, res, next) => {
-  const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
-  res.status(statusCode).json({
-    message: err.message,
-    stack: process.env.NODE_ENV === 'production' ? null : err.stack,
-  });
+  res.status(200).json({ message: "API is running... 🚀" });
 });
 
 const PORT = process.env.PORT || 5000;
