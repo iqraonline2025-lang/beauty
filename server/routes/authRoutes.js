@@ -27,21 +27,15 @@ passport.use(new GoogleStrategy({
   async (accessToken, refreshToken, profile, done) => {
     try {
       const emailFromGoogle = profile.emails[0].value;
-
-      // 1. Try to find user by googleId
       let user = await User.findOne({ googleId: profile.id });
 
       if (!user) {
-        // 2. Fallback: Check if email exists (from a standard registration)
         user = await User.findOne({ email: emailFromGoogle });
-
         if (user) {
-          // 3. Link Google account to existing email user
           user.googleId = profile.id;
           if (!user.avatar) user.avatar = profile.photos[0].value;
           await user.save();
         } else {
-          // 4. No account at all, create new
           user = await User.create({
             googleId: profile.id,
             name: profile.displayName,
@@ -57,9 +51,9 @@ passport.use(new GoogleStrategy({
   }
 ));
 
-// Use user._id for consistency with MongoDB
+// MAGIC FIX 1: Always convert the ID to a string for session stability
 passport.serializeUser((user, done) => {
-  done(null, user._id);
+  done(null, user._id.toString());
 });
 
 passport.deserializeUser(async (id, done) => {
@@ -71,12 +65,11 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
-// --- AUTH ROUTES ---
+// --- ROUTES ---
 
 router.post("/register", registerUser);
 router.post("/login", loginUser);
 
-// FIX: Added 'prompt' to ensure Google always asks which account to use
 router.get("/google", passport.authenticate("google", { 
   scope: ["profile", "email"],
   prompt: "select_account" 
@@ -88,15 +81,16 @@ router.get("/google/callback",
     session: true 
   }),
   (req, res) => {
-    // Force session to save before redirecting (avoids race conditions on Render)
-    req.session.save(() => {
+    // MAGIC FIX 2: Explicitly save the session and wait before redirecting
+    req.session.save((err) => {
+      if (err) return res.redirect(`${FRONTEND_URL}/login`);
       res.redirect(`${FRONTEND_URL}/services`);
     });
   }
 );
 
 router.get("/login/success", (req, res) => {
-  if (req.user) {
+  if (req.isAuthenticated() && req.user) {
     res.status(200).json({
       success: true,
       user: {
@@ -108,18 +102,21 @@ router.get("/login/success", (req, res) => {
       },
     });
   } else {
-    res.status(401).json({ success: false, message: "No active session" });
+    res.status(401).json({ success: false, message: "Unauthorized" });
   }
 });
 
 router.post("/logout", (req, res) => {
   req.logout((err) => {
     if (err) return res.status(500).json({ message: "Logout failed" });
-    
     if (req.session) {
-      req.session.destroy((err) => {
-        if (err) return res.status(500).json({ message: "Could not destroy session" });
-        res.clearCookie('connect.sid', { path: '/' }); 
+      req.session.destroy(() => {
+        res.clearCookie('connect.sid', {
+            path: '/',
+            domain: process.env.NODE_ENV === "production" ? ".onrender.com" : "localhost", // Handle subdomains
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+            secure: process.env.NODE_ENV === "production"
+        }); 
         return res.status(200).json({ success: true });
       });
     } else {
