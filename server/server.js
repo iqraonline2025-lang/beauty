@@ -8,7 +8,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import session from "express-session";
 import passport from "passport";
-import MongoStore from "connect-mongo"; // Recommended for production
+
 
 // Route Imports
 import serviceRoutes from "./routes/serviceRoutes.js"; 
