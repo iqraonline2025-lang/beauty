@@ -8,12 +8,16 @@ import {
 
 const router = express.Router();
 
-// Admin Routes
-router.get('/all', getAllBookings);
-router.patch('/:id/cancel', cancelBooking);
-
 // Public Routes
 router.get('/occupied', getOccupiedSlots);
 router.post('/', createBooking);
+
+// Admin Routes
+router.get('/all', getAllBookings);
+
+// --- FIXED LINE ---
+// Changed from .patch('/:id/cancel') to .put('/:id') 
+// to match: fetch(`${API}/api/bookings/${id}`, { method: 'PUT' })
+router.put('/:id', cancelBooking);
 
 export default router;
