@@ -5,25 +5,27 @@ import dotenv from "dotenv";
 import User from "../models/User.js";
 import { registerUser, loginUser } from "../controllers/authController.js";
 
-// Load env variables specifically for this module to prevent "undefined" crashes
 dotenv.config();
 
 const router = express.Router();
 
-// --- DEBUGGING LOGS (Check your terminal for these!) ---
-console.log("--- Auth Route Initializing ---");
-if (!process.env.GOOGLE_CLIENT_ID) {
-    console.error("❌ ERROR: GOOGLE_CLIENT_ID is missing from .env file!");
-} else {
-    console.log("✅ GOOGLE_CLIENT_ID loaded successfully.");
-}
+// --- DYNAMIC URLS FOR PRODUCTION ---
+// This automatically detects if you are on Render or Localhost
+const BACKEND_URL = process.env.NODE_ENV === "production" 
+    ? "https://beauty-qyr9.onrender.com" 
+    : "http://localhost:5000";
+
+const FRONTEND_URL = process.env.NODE_ENV === "production" 
+    ? "https://beauty-1-ab1g.onrender.com" 
+    : "http://localhost:3000";
 
 // --- PASSPORT CONFIGURATION ---
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    // Absolute URL is more reliable for Google's matching logic
-    callbackURL: "http://localhost:5000/api/auth/google/callback" 
+    // FIX 1: Use the dynamic Backend URL
+    callbackURL: `${BACKEND_URL}/api/auth/google/callback`,
+    proxy: true // FIX 2: Essential for Render's HTTPS to work
   },
   async (accessToken, refreshToken, profile, done) => {
     try {
@@ -56,21 +58,19 @@ passport.deserializeUser(async (id, done) => {
 
 // --- AUTH ROUTES ---
 
-// 1. Email/Password
 router.post("/register", registerUser);
 router.post("/login", loginUser);
 
-// 2. Google OAuth
 router.get("/google", passport.authenticate("google", { scope: ["profile", "email"] }));
 
 router.get("/google/callback", 
-  passport.authenticate("google", { failureRedirect: "http://localhost:3000/login" }),
+  // FIX 3: Dynamic Redirects
+  passport.authenticate("google", { failureRedirect: `${FRONTEND_URL}/login` }),
   (req, res) => {
-    res.redirect("http://localhost:3000/services");
+    res.redirect(`${FRONTEND_URL}/services`);
   }
 );
 
-// 3. Status Check (Returns 200 for guests to keep console clean)
 router.get("/login/success", (req, res) => {
   if (req.user) {
     res.status(200).json({
@@ -88,7 +88,6 @@ router.get("/login/success", (req, res) => {
   }
 });
 
-// 4. Logout (POST method to match frontend Axios call)
 router.post("/logout", (req, res) => {
   req.logout((err) => {
     if (err) return res.status(500).json({ message: "Logout failed" });
