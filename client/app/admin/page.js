@@ -38,6 +38,7 @@ export default function AdminPage() {
 
     useEffect(() => { fetchData(); }, []);
 
+    // --- SERVICE ACTIONS ---
     const handleDelete = async (id) => {
         if (!window.confirm("Delete this service?")) return;
         try {
@@ -48,24 +49,17 @@ export default function AdminPage() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        
-        // --- FIX: Use FormData for Image Uploads ---
         const data = new FormData();
         data.append('title', formData.title);
         data.append('category', formData.category);
         data.append('description', formData.description);
         data.append('price', formData.price);
         data.append('duration', formData.duration);
-        
-        // This key MUST match upload.single('image') in your backend
-        if (imageFile) {
-            data.append('image', imageFile);
-        }
+        if (imageFile) data.append('image', imageFile);
 
         try {
             const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/services`, { 
                 method: 'POST', 
-                // Note: Do NOT set Content-Type header when sending FormData
                 body: data 
             });
             
@@ -79,6 +73,27 @@ export default function AdminPage() {
                 alert(`Error: ${errorResult.message}`);
             }
         } catch (err) { alert("Error saving service"); }
+    };
+
+    // --- BOOKING ACTIONS (NEW) ---
+    const handleCancelBooking = async (id) => {
+        if (!window.confirm("Are you sure you want to cancel this appointment?")) return;
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/bookings/${id}`, {
+                method: 'PUT', // Matches your backend cancelBooking logic
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'cancelled' })
+            });
+            
+            if (res.ok) {
+                // Update local state immediately
+                setBookings(prev => prev.map(b => b._id === id ? { ...b, status: 'cancelled' } : b));
+            } else {
+                alert("Failed to cancel booking");
+            }
+        } catch (err) {
+            console.error("Cancel Error:", err);
+        }
     };
 
     if (loading) return <div className="h-screen flex items-center justify-center bg-[#FDFCFD]"><Loader2 className="animate-spin text-pink-500" size={48} /></div>;
@@ -113,6 +128,59 @@ export default function AdminPage() {
                     </div>
                 )}
 
+                {/* Appointments Tab (ADDED SECTION) */}
+                {activeTab === 'appointments' && (
+                    <div className="animate-in fade-in">
+                        <h2 className="text-3xl font-serif italic mb-8 text-gray-900">Manage Appointments</h2>
+                        <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
+                            <table className="w-full text-left">
+                                <thead className="bg-gray-50 border-b">
+                                    <tr>
+                                        <th className="p-6 text-[11px] font-black uppercase text-gray-500">Client</th>
+                                        <th className="p-6 text-[11px] font-black uppercase text-gray-500">Service & Date</th>
+                                        <th className="p-6 text-[11px] font-black uppercase text-gray-500">Status</th>
+                                        <th className="p-6 text-right text-[11px] font-black uppercase text-gray-500 pr-10">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {bookings.length > 0 ? bookings.map((b) => (
+                                        <tr key={b._id} className="hover:bg-pink-50/20 transition-colors">
+                                            <td className="p-6">
+                                                <p className="font-bold text-gray-900">{b.customerName}</p>
+                                                <p className="text-xs text-gray-400">{b.email}</p>
+                                                <p className="text-xs text-gray-400">{b.phone}</p>
+                                            </td>
+                                            <td className="p-6">
+                                                <p className="text-sm font-medium text-pink-600">{b.service?.title || 'General Booking'}</p>
+                                                <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
+                                                    <CalendarCheck size={14} /> {b.date}
+                                                    <Clock size={14} className="ml-2" /> {b.time}
+                                                </div>
+                                            </td>
+                                            <td className="p-6">
+                                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
+                                                    b.status === 'confirmed' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+                                                }`}>
+                                                    {b.status}
+                                                </span>
+                                            </td>
+                                            <td className="p-6 text-right pr-10">
+                                                {b.status !== 'cancelled' && (
+                                                    <button onClick={() => handleCancelBooking(b._id)} className="text-red-400 hover:text-red-600 transition-all flex items-center justify-end gap-1 ml-auto">
+                                                        <Ban size={16}/> <span className="text-[10px] font-black uppercase">Cancel</span>
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    )) : (
+                                        <tr><td colSpan="4" className="p-10 text-center text-gray-400 italic">No bookings found.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
                 {/* Add Service Tab */}
                 {activeTab === 'add' && (
                     <div className="max-w-3xl animate-in slide-in-from-bottom-4">
@@ -129,36 +197,27 @@ export default function AdminPage() {
                                     </select>
                                 </div>
                             </div>
-
                             <div className="grid grid-cols-2 gap-8">
                                 <FormInput label="Price (£)" type="number" value={formData.price} onChange={(e) => setFormData({...formData, price: e.target.value})} required />
-                                <FormInput label="Duration (min)" value={formData.duration} onChange={(e) => setFormData({...formData, duration: e.target.value})} required />
+                                <div className="space-y-2">
+                                    <label className="text-[11px] font-black uppercase text-gray-500 ml-1">Duration (min)</label>
+                                    <input value={formData.duration} onChange={(e) => setFormData({...formData, duration: e.target.value})} className="w-full px-5 py-4 rounded-2xl border border-gray-200 focus:border-pink-400 outline-none text-sm" required />
+                                </div>
                             </div>
-
-                            {/* --- ADDED: Image Upload Field --- */}
                             <div className="space-y-2">
                                 <label className="text-[11px] font-black uppercase text-gray-500 ml-1">Service Image</label>
                                 <div className="relative border-2 border-dashed border-gray-100 rounded-2xl p-8 text-center hover:bg-gray-50 transition-all cursor-pointer">
-                                    <input 
-                                        type="file" 
-                                        accept="image/*"
-                                        onChange={(e) => setImageFile(e.target.files[0])}
-                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                    />
+                                    <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                                     <div className="flex flex-col items-center gap-2">
                                         <ImageIcon className="text-pink-400" size={32} />
-                                        <p className="text-sm text-gray-500">
-                                            {imageFile ? <span className="text-pink-600 font-bold">{imageFile.name}</span> : "Click to upload image"}
-                                        </p>
+                                        <p className="text-sm text-gray-500">{imageFile ? imageFile.name : "Click to upload image"}</p>
                                     </div>
                                 </div>
                             </div>
-
                             <div className="space-y-2">
                                 <label className="text-[11px] font-black uppercase text-gray-500 ml-1">Description</label>
                                 <textarea value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full p-5 rounded-2xl border border-gray-200 h-32 text-sm" required />
                             </div>
-                            
                             <button type="submit" className="w-full bg-black text-white py-5 rounded-2xl font-black uppercase text-xs hover:bg-pink-500 transition-all">Save & Publish</button>
                         </form>
                     </div>
