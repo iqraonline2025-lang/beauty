@@ -24,6 +24,7 @@ const app = express();
 app.set("trust proxy", 1); 
 
 // --- 2. DYNAMIC CORS ---
+// Pointing to your specific frontend URL to avoid cross-origin blocks
 const FRONTEND_URL = process.env.NODE_ENV === "production" 
     ? "https://beauty-1-ab1g.onrender.com" 
     : "http://localhost:3000";
@@ -45,8 +46,8 @@ app.use(
       secure: process.env.NODE_ENV === "production", 
       // 'none' is required because frontend and backend have different URLs.
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", 
-      httpOnly: true, // Security best practice
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      httpOnly: true, 
+      maxAge: 24 * 60 * 60 * 1000, 
     },
   })
 );
@@ -78,13 +79,14 @@ app.use((err, req, res, next) => {
 });
 
 // --- 8. DATABASE & SERVER START ---
+// Render provides a PORT environment variable (usually 10000).
 const PORT = process.env.PORT || 5000;
 
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log("MongoDB Connected ✅");
     
-    // Listening on '0.0.0.0' is the "missing link" for Cloudflare and Render to talk.
+    // Listening on '0.0.0.0' allows Render/Cloudflare to route traffic to the container.
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on port ${PORT} 🚀`);
     });
